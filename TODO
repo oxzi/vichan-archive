@@ -1,0 +1,8 @@
+- check for already existing posts
+- check for deleted posts
+- check for changed posts (multiple versions)
+- handle "empty" posts
+- complete web-frontend
+- some refactoring
+- contracts
+- readme
