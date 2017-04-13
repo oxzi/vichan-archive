@@ -1,17 +1,19 @@
 #lang racket
 
 (require db
+         "../config.rkt"
          "data.rkt")
 
-(provide db-boards
-         db-threads
-         db-threads-dmp
-         db-thread
-         db-post-upsert)
+(provide (contract-out
+          [db-boards      (                       ->   (listof pair?))]
+          [db-threads     ((or/c string? false) . -> . (listof list?))]
+          [db-threads-dmp (string?              . -> . (listof pair?))]
+          [db-thread      (string? number?      . -> . (listof post?))]
+          [db-post-upsert (post?                . -> . void?)]))
 
-(define pgc (postgresql-connect #:user "postgres"
-                                #:password "postgres"
-                                #:database "vichan-dump"))
+(define pgc (postgresql-connect #:user     (hash-ref sql-cfg 'user)
+                                #:password (hash-ref sql-cfg 'pass)
+                                #:database (hash-ref sql-cfg 'db)))
 
 ; -> (list-of pair?)
 ; Returns a list of pairs with board-name and amount of posts.

@@ -1,16 +1,16 @@
 #lang racket
 
-(require "inc/data.rkt"
+(require "config.rkt"
+         "inc/data.rkt"
          "inc/database.rkt"
          "inc/dump.rkt")
-
-(define board-url "https://lainchan.org/")
-(define boards (list "λ" "q" "lain"))
 
 ; string? -> (list-of number?)
 ; This function checks all current threads on the given board against those
 ; stored in the database and returns a list of ids fromt new and changed ones.
 (define (new-threads board)
+  (log-debug (string-append "Checking /" board "/ for new threads"))
+  
   (let* ([url (string-append board-url board "/threads.json")]
          [json-data    (vichan-json->hash-table url)]
          [threads-live (vichan-threads json-data)]
@@ -20,36 +20,51 @@
          [thread->no   (λ (thread) (car  thread))]
          [thread->time (λ (thread) (cadr thread))]
 
-         ; (A -> boolean?) (list-of A) -> boolean?
-         [exists (λ (fun lst) (not (boolean? (memf fun lst))))]
+         [thread-new?
+          (λ (thrd)
+            (let* ([no    (thread->no   thrd)]
+                   [time  (thread->time thrd)]
+                   [in-db (memf (λ (t) (eq? (thread->no t) no)) threads-db)])
+              (if (boolean? in-db)
+                  true
+                  (> time (thread->time (car in-db))))))]
+         [thread-new (map thread->no (filter thread-new? threads-live))])
+    (log-debug (string-append "There are "
+                              (number->string (length thread-new))
+                              " new threads on /" board "/"))
+    thread-new))
 
-         ; Filter those threads which aren't in the database and
-         ; those which have a newer timestamp for the last post.
-         ; This may need some refactoring..
-         [threads-new
-          (filter (λ (tl) (not (exists (λ (td)
-                                         (eq? (thread->no tl) (thread->no td)))
-                                       threads-db)))
-                  threads-live)]
-         [threads-updated
-          (filter (λ (tl) (exists (λ (td)
-                                    (and
-                                     (eq? (thread->no tl) (thread->no td))
-                                     (> (thread->time tl) (thread->time td))))
-                                  threads-db))
-                  threads-live)]
-         [threads-relevant (append threads-new threads-updated)])
-    (map thread->no threads-relevant)))
-
+; string? number? -> void?
+; Sync this thread with the database.
 (define (dump-thread board number)
+  (log-debug (string-append "Starting to dump thread "
+                            (number->string number) " on /" board "/"))
+  
   (let* ([url (string-append
                board-url board "/res/" (number->string number) ".json")]
          [json-data  (vichan-json->hash-table url)]
          [posts-live (vichan-thread json-data board)]
 
-         [posts-db (db-thread board number)])
-    ; TODO: check duplicates; check deleted posts; check changes
-    (for-each db-post-upsert posts-live)))
+         [posts-db (filter post-existing (db-thread board number))]
+
+         [post-not-in-set?
+          (λ (pst set) (null? (filter
+                               (λ (p) (eq? (post-no p) (post-no pst)))
+                               set)))]
+         [posts-new (filter (λ (x) (post-not-in-set? x posts-db)) posts-live)]
+         [posts-del (filter (λ (x) (post-not-in-set? x posts-live)) posts-db)]
+         [posts-del-marked
+          (map (λ (pst) (struct-copy post pst [existing false])) posts-del)])
+    (log-info (string-append "There is/are " (number->string (length posts-new))
+                             " new posts in " (number->string number)
+                             " on /" board "/"))
+    (and (> (length posts-del) 0)
+         (log-warning (string-append "There was/were "
+                                     (number->string (length posts-del-marked))
+                                     " posts deleted in " number
+                                     " on /" board "/")))
+    (for-each db-post-upsert (append posts-new posts-del-marked))))
+
 
 (for-each (λ (board)
             (let ([threads (new-threads board)])

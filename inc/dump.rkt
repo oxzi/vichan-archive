@@ -5,10 +5,11 @@
          net/url
          "data.rkt")
 
-(provide vichan-json->hash-table
-         vichan-hash-table-error?
-         vichan-threads
-         vichan-thread)
+(provide (contract-out
+          [vichan-json->hash-table  (string?          . -> . jsexpr?)]
+          [vichan-hash-table-error? (any/c            . -> . boolean?)]
+          [vichan-threads           ((listof jsexpr?) . -> . (listof pair?))]
+          [vichan-thread            (jsexpr? string?  . -> . (listof post?))]))
 
 ; bytes? -> number?
 ; Tries to parse the HTTP status code from a HTTP-response as a number.
@@ -40,13 +41,13 @@
       [true
        (string->jsexpr (port->string resp-port))])))
 
-; any? -> boolean?
+; any -> boolean?
 ; Checks if the given parameter can be an error from vichan-json->hash-table
 (define (vichan-hash-table-error? ht)
   (and (hash? ht)
        (hash-has-key? ht 'error)))
 
-; (list-of jsexpr?) -> (list-of pair?)
+; (list-of jsexpr?) -> (listof pair?)
 ; This function expects the /BOARD/threads.json-response from the
 ; vichan-json->hash-table function and returns a list of tuples. The first
 ; element is the thread-no and the second element is the last modified timestamp
@@ -58,7 +59,7 @@
                             json-single)])
     json-pairs))
 
-; jsexpr? [string?] -> (list-of post?)
+; jsexpr? [string?] -> (listof post?)
 ; This function expects the /BOARD/res/NO.json-response from the
 ; vichan-json->hash-table function and returns a list of posts. The second
 ; parameter is the (optional) board name.
