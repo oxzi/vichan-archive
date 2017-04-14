@@ -7,16 +7,17 @@
 
 ; string? -> (listof number?)
 ; This function checks all current threads on the given board against those
-; stored in the database and returns a list of ids fromt new and changed ones.
-(define/contract (new-threads board)
-  (string? . -> . (listof number?))
+; stored in the database and returns a pair of (lists of ids from new and
+; changed threads) and (lists of ids from dead ones).
+(define/contract (changed-threads board)
+  (string? . -> . (listof (listof number?)))
 
   (log-debug (string-append "Checking /" board "/ for new threads"))
   (let* ([url (string-append board-url board "/threads.json")]
          [json-data    (vichan-json->hash-table url)]
          [threads-live (vichan-threads json-data)]
          
-         [threads-db (db-threads-dmp board)]
+         [threads-db (db-threads-dmp board true)]
 
          [thread->no   (λ (thread) (car  thread))]
          [thread->time (λ (thread) (cadr thread))]
@@ -29,11 +30,19 @@
               (if (boolean? in-db)
                   true
                   (> time (thread->time (car in-db))))))]
-         [thread-new (map thread->no (filter thread-new? threads-live))])
-    (log-debug (string-append "There are "
+         [thread-new (map thread->no (filter thread-new? threads-live))]
+
+         [thread-dead?
+          (λ (thrd)
+            (null? (filter (λ (t) (eq? (thread->no t) (thread->no thrd)))
+                           threads-live)))]
+         [thread-dead (map thread->no (filter thread-dead? threads-db))])
+    (log-debug (string-append "There is/are "
                               (number->string (length thread-new))
-                              " new threads on /" board "/"))
-    thread-new))
+                              " new and "
+                              (number->string (length thread-dead))
+                              " deleted threads on /" board "/"))
+    (list thread-new thread-dead)))
 
 ; string? number? -> void?
 ; Sync this thread with the database.
@@ -60,15 +69,27 @@
     (log-info (string-append "There is/are " (number->string (length posts-new))
                              " new posts in " (number->string number)
                              " on /" board "/"))
-    (and (> (length posts-del) 0)
-         (log-warning (string-append "There was/were "
-                                     (number->string (length posts-del-marked))
-                                     " posts deleted in " number
-                                     " on /" board "/")))
+    (when (> (length posts-del) 0)
+      (log-info (string-append "There was/were "
+                               (number->string (length posts-del-marked))
+                               " posts deleted in " number
+                               " on /" board "/")))
     (for-each db-post-upsert (append posts-new posts-del-marked))))
 
+; string? number? -> void?
+; Marks the thread as deleted (non-existing) in the database.
+(define/contract (mark-thread-as-dead board no)
+  (string? number? . -> . void?)
+  
+  (log-info (string-append "Marking thread " (number->string no)
+                           " on /" board "/ as deleted."))
+  (let* ([op-post (db-post board no)]
+         [op-post-del (struct-copy post op-post [existing false])])
+    (db-post-upsert op-post-del)))
 
 (for-each (λ (board)
-            (let ([threads (new-threads board)])
-              (for-each (λ (no) (dump-thread board no)) threads)))
+            (match (changed-threads board)
+              [(list news deads)
+               (for-each (λ (no) (dump-thread board no))         news)
+               (for-each (λ (no) (mark-thread-as-dead board no)) deads)]))
           boards)

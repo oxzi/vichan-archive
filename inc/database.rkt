@@ -7,8 +7,9 @@
 (provide (contract-out
           [db-boards      (                       ->   (listof pair?))]
           [db-threads     ((or/c string? false) . -> . (listof list?))]
-          [db-threads-dmp (string?              . -> . (listof pair?))]
+          [db-threads-dmp (string? boolean?     . -> . (listof pair?))]
           [db-thread      (string? number?      . -> . (listof post?))]
+          [db-post        (string? number?      . -> . (or/c post? false))]
           [db-post-upsert (post?                . -> . void?)]))
 
 (define pgc (postgresql-connect #:user     (hash-ref sql-cfg 'user)
@@ -21,8 +22,8 @@
   (map vector->list (query-rows pgc "SELECT * FROM boards")))
 
 ; [string?|false] -> (list-of list?)
-; Returns a list of lists with board-name, thread-no, posts and the
-; timestamp of the last post.
+; Returns a list of lists with board-name, thread-no, posts, the timestamp
+; of the last post and a flag if the thread still exists.
 (define (db-threads [board false])
   (let ([rows
          (if (string? board)
@@ -32,27 +33,47 @@
              (query-rows pgc "SELECT * FROM threads"))])
     (map vector->list rows)))
 
-; string? -> (list-of pair?)
+; string? [boolean?] -> (list-of pair?)
 ; Returns a list of pairs with thread-no and the timestamp of the last post
 ; for each thread on the given board. This function is written with an analog
-; return as the vichan-threads function in dump.rkt.
-(define (db-threads-dmp board)
+; return as the vichan-threads function in dump.rkt. The second, optional
+; parameter filters dead threads.
+(define (db-threads-dmp board [existing-only false])
   (let ([threads (db-threads board)]
+        [filter-existing (λ (t) (if existing-only
+                                    (fifth t)
+                                    true))]
         [dump-rows (λ (t) (list (cadr t) (cadddr t)))])
-    (map dump-rows threads)))
+    (map dump-rows (filter filter-existing threads))))
+
+; vector? -> post?
+; Transforms a vector representing a row of the posts-table into a post.
+(define/contract (row->post vec)
+  (vector? . -> . post?)
+  (call-with-values (λ () (vector->values vec)) post))
 
 ; string? number? -> (list-of post?)
 ; Queries the database for the thread in board with thread-no. This function
-; will return a list of post-structs.
+; will return a list of posts.
 (define (db-thread board thread-no)
   (let ([rows (query-rows
                pgc
                "SELECT * FROM posts WHERE board = $1 AND thread_no = $2"
                board
-               thread-no)]
-        [row->post (λ (vec)
-                     (call-with-values (λ () (vector->values vec)) post))])
+               thread-no)])
     (map row->post rows)))
+
+; string? number? -> post?|false
+; Returns the requested post from the database or false if it's not existing.
+(define (db-post board no)
+  (let ([rows (query-rows
+               pgc
+               "SELECT * FROM posts WHERE board = $1 AND no = $2"
+               board
+               no)])
+    (if (null? rows)
+        false
+        (row->post (car rows)))))
 
 ; post? -> void?
 ; Function to insert/update the given post-struct to the database.
