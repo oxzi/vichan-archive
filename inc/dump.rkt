@@ -14,7 +14,9 @@
 ; bytes? -> number?
 ; Tries to parse the HTTP status code from a HTTP-response as a number.
 ; A '0' will be returned if the regexp fails.
-(define (http-status-bytes->code status-bytes)
+(define/contract (http-status-bytes->code status-bytes)
+  (bytes? . -> . number?)
+  
   (let* ([status-rgxp (regexp-match #rx"HTTP/[0-9.]+ ([0-9]+) .*" status-bytes)]
          [status-strng (match status-rgxp
                          [(list _ status) (bytes->string/utf-8 status)]

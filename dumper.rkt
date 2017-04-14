@@ -5,12 +5,13 @@
          "inc/database.rkt"
          "inc/dump.rkt")
 
-; string? -> (list-of number?)
+; string? -> (listof number?)
 ; This function checks all current threads on the given board against those
 ; stored in the database and returns a list of ids fromt new and changed ones.
-(define (new-threads board)
+(define/contract (new-threads board)
+  (string? . -> . (listof number?))
+
   (log-debug (string-append "Checking /" board "/ for new threads"))
-  
   (let* ([url (string-append board-url board "/threads.json")]
          [json-data    (vichan-json->hash-table url)]
          [threads-live (vichan-threads json-data)]
@@ -36,10 +37,11 @@
 
 ; string? number? -> void?
 ; Sync this thread with the database.
-(define (dump-thread board number)
+(define/contract (dump-thread board number)
+  (string? number? . -> . void?)
+  
   (log-debug (string-append "Starting to dump thread "
                             (number->string number) " on /" board "/"))
-  
   (let* ([url (string-append
                board-url board "/res/" (number->string number) ".json")]
          [json-data  (vichan-json->hash-table url)]
