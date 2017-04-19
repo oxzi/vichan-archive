@@ -56,12 +56,13 @@
 ; Queries the database for the thread in board with thread-no. This function
 ; will return a list of posts.
 (define (db-thread board thread-no)
-  (let ([rows (query-rows
-               pgc
-               "SELECT * FROM posts WHERE board = $1 AND thread_no = $2"
-               board
-               thread-no)])
-    (map row->post rows)))
+  (let* ([rows (query-rows
+                pgc
+                "SELECT * FROM posts WHERE board = $1 AND thread_no = $2"
+                board
+                thread-no)]
+         [posts (map row->post rows)])
+    (sort posts (λ (p1 p2) (< (post-no p1) (post-no p2))))))
 
 ; string? number? -> post?|false
 ; Returns the requested post from the database or false if it's not existing.

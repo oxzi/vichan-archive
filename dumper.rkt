@@ -72,7 +72,7 @@
     (when (> (length posts-del) 0)
       (log-info (string-append "There was/were "
                                (number->string (length posts-del-marked))
-                               " posts deleted in " number
+                               " posts deleted in " (number->string number)
                                " on /" board "/")))
     (for-each db-post-upsert (append posts-new posts-del-marked))))
 
