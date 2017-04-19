@@ -6,7 +6,17 @@
           [sql-cfg (hash/c symbol? string?)]))
 
 (define board-url "https://lainchan.org/")
-(define boards (list "λ" "r" "q" "lain" "test"))
+(define boards (list "drug"
+                     "λ"
+                     "layer"
+                     "lit"
+                     "q"
+                     "r"
+                     "sec"
+                     "zzz"
+                     
+                     "lain"
+                     "test"))
 
 (define sql-cfg (hash 'user "postgres"
                       'pass "postgres"
